@@ -2,8 +2,7 @@ Well this i added random features like replacing the openrouter api with a offli
 
 ## Demo Video
 
-<video width="640" height="480" controls>
-  <source src="./ksm_new.mp4" type="video/mp4">
-  Your browser does not support the video tag.
-</video>
+[![Demo Video](https://img.shields.io/badge/🎥-Watch%20Demo-blue?style=for-the-badge)](https://github.com/Vector42-rev/ksm-007/raw/stable/ksm_new.mp4)
+
+*Click the badge above to view the demo video*
 
