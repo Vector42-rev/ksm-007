@@ -568,6 +568,29 @@ size_t Ollama::WriteDataStreamWithResponse(void *ptr,
 						}
 					}
 
+					// Process tool calls during streaming (Ollama format)
+					if (result.contains("message") &&
+						result["message"].contains("tool_calls") &&
+						result["message"]["tool_calls"].is_array())
+					{
+						std::cout << "=== DETECTED TOOL CALLS IN STREAMING ==="
+								  << std::endl;
+						// Accumulate tool calls in the full response
+						if (!g_fullResponse["message"].contains("tool_calls"))
+						{
+							g_fullResponse["message"]["tool_calls"] = json::array();
+						}
+
+						// Add tool calls to accumulated response
+						for (const auto &toolCall : result["message"]["tool_calls"])
+						{
+							g_fullResponse["message"]["tool_calls"].push_back(toolCall);
+						}
+						std::cout << "Tool calls accumulated: "
+								  << g_fullResponse["message"]["tool_calls"].size()
+								  << std::endl;
+					}
+
 					// Update done status
 					if (result.contains("done"))
 					{

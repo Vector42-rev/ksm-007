@@ -303,8 +303,24 @@ void AgentRequest::sendMessage(const std::string &payload,
 										argumentsStr = "{}";
 									} else
 									{
-										argumentsStr = toolCall["function"]["arguments"]
-														   .get<std::string>();
+										// Handle both string and object formats for arguments
+										if (toolCall["function"]["arguments"].is_string())
+										{
+											// Arguments are already a JSON string
+											argumentsStr =
+												toolCall["function"]["arguments"]
+													.get<std::string>();
+										} else if (toolCall["function"]["arguments"]
+													   .is_object())
+										{
+											// Arguments are an object, convert to string
+											argumentsStr =
+												toolCall["function"]["arguments"].dump();
+										} else
+										{
+											// Fallback to empty object
+											argumentsStr = "{}";
+										}
 									}
 
 									std::cout
