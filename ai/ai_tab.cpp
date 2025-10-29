@@ -1,7 +1,7 @@
 #include "ai_tab.h"
 #include "../editor/editor.h"
 #include "../files/files.h"
-#include "ai_open_router.h"
+#include "ai_ollama.h"
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -42,13 +42,9 @@ AITab::~AITab()
 
 bool AITab::load_key()
 {
-	std::string key = gSettingsFileManager.getOpenRouterKey();
-	api_key = key;
-	// std::cout << "API Key: " << api_key << std::endl;
-	if (api_key.empty())
-	{
-		return false;
-	}
+	// Ollama runs locally and doesn't require an API key
+	// Just set a dummy key for compatibility
+	api_key = "local-ollama";
 	return true;
 }
 
@@ -119,7 +115,7 @@ void AITab::tab_complete()
 				}
 
 				std::cout << "Requesting AI completion...\n";
-				std::string new_response = OpenRouter::request(prompt, api_key);
+				std::string new_response = Ollama::request(prompt, api_key);
 
 				if (should_cancel)
 				{

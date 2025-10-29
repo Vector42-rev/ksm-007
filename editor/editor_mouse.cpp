@@ -306,7 +306,7 @@ void EditorMouse::handleContextMenu()
 	// Detect state changes for tracking
 	if (popupIsOpen && !popupWasOpen)
 	{
-		std::cout << "Popup was just opened" << std::endl;
+		std::cout << "Popup was just ope" << std::endl;
 	}
 	if (!popupIsOpen && popupWasOpen)
 	{

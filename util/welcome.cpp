@@ -352,7 +352,7 @@ void Welcome::render()
 			ImGui::PushFont(currentFont);
 			ImGui::SetWindowFontScale(scaleFactor);
 
-			const char *title = "Welcome to NED";
+			const char *title = "KSM-007";
 			ImGui::SetCursorPos(ImVec2(contentStartX, titleY));
 
 			// Use theme text color
@@ -523,7 +523,7 @@ void Welcome::render()
 			ImGui::PushFont(currentFont);
 			ImGui::SetWindowFontScale(scaleFactor);
 
-			const char *title = "Welcome to NED";
+			const char *title = "KSM-007";
 			float titleWidth = ImGui::CalcTextSize(title).x;
 			ImGui::SetCursorPos(ImVec2((windowWidth - titleWidth) * 0.5f, currentY));
 

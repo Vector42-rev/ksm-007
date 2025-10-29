@@ -10,6 +10,7 @@
     "lsp_find_def" : "d",
     "lsp_completion" : "l",
     "ai_completion" : "g",
+    "python_completion" : "h",
     "line_jump_key" : ";"
 }
 

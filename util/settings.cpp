@@ -681,6 +681,62 @@ void Settings::renderMainSettings()
 		settingsChanged = true;
 		saveSettings(); // Save immediately like other settings
 	}
+
+	ImGui::Spacing();
+
+	// Agent timeout setting
+	static int currentTimeout = 120;
+	if (ImGui::IsWindowAppearing() || profileJustSwitched)
+	{
+		currentTimeout = static_cast<int>(getAgentTimeout());
+	}
+
+	if (currentTimeout == 0)
+	{
+		ImGui::Text("Agent Request Timeout: No timeout");
+	} else
+	{
+		ImGui::Text("Agent Request Timeout: %d seconds", currentTimeout);
+	}
+
+	if (ImGui::SliderInt("##agent_timeout_slider", &currentTimeout, 0, 600))
+	{
+		setAgentTimeout(static_cast<long>(currentTimeout));
+		saveSettings();
+	}
+
+	// Add quick preset buttons
+	if (ImGui::Button("30s"))
+	{
+		currentTimeout = 30;
+		setAgentTimeout(30L);
+		saveSettings();
+	}
+	ImGui::SameLine();
+	if (ImGui::Button("60s"))
+	{
+		currentTimeout = 60;
+		setAgentTimeout(60L);
+		saveSettings();
+	}
+	ImGui::SameLine();
+	if (ImGui::Button("120s"))
+	{
+		currentTimeout = 120;
+		setAgentTimeout(120L);
+		saveSettings();
+	}
+	ImGui::SameLine();
+	if (ImGui::Button("No timeout"))
+	{
+		currentTimeout = 0;
+		setAgentTimeout(0L);
+		saveSettings();
+	}
+
+	ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.7f, 0.7f, 0.7f, 1.0f));
+	ImGui::TextWrapped("Controls timeout for AI agent requests. 0 = no timeout.");
+	ImGui::PopStyleColor();
 }
 
 void Settings::renderMacSettings()

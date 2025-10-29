@@ -1,7 +1,7 @@
 #include "agent_request.h"
 #include "../lib/json.hpp"
 #include "ai_agent.h"
-#include "ai_open_router.h"
+#include "ai_ollama.h"
 #include "mcp/mcp_manager.h"
 #include <chrono>
 #include <curl/curl.h>
@@ -140,10 +140,9 @@ void AgentRequest::sendMessage(const std::string &payload,
 			// Track the full JSON response
 			auto fullJsonResponse = std::make_shared<json>();
 
-			std::cout << "Calling OpenRouter::jsonPayloadStreamWithResponse..."
-					  << std::endl;
+			std::cout << "Calling Ollama::jsonPayloadStreamWithResponse..." << std::endl;
 			// Use the new JSON payload streaming function with response callback
-			auto streamResult = OpenRouter::jsonPayloadStreamWithResponse(
+			auto streamResult = Ollama::jsonPayloadStreamWithResponse(
 				payloadJson.dump(),
 				api_key,
 				[this, onStreamingToken, fullResponse](const std::string &token) {
@@ -204,9 +203,241 @@ void AgentRequest::sendMessage(const std::string &payload,
 				std::cout << fullJsonResponse->dump(4) << std::endl;
 
 				// Check if there are tool calls in the response
-				if (fullJsonResponse->contains("choices") &&
-					(*fullJsonResponse)["choices"].is_array() &&
-					!(*fullJsonResponse)["choices"].empty())
+
+				// First, handle Ollama `/api/chat` non-streaming response format:
+				// { "model": "...", "message": { "role": "assistant", "content": "..." } }
+				if (!fullJsonResponse->is_null() &&
+					fullJsonResponse->contains("message") &&
+					(*fullJsonResponse)["message"].is_object())
+				{
+					std::cout << "=== Detected Ollama-style `message` response ==="
+							  << std::endl;
+					try
+					{
+						const auto &msg = (*fullJsonResponse)["message"];
+						std::string assistant_content;
+						if (msg.contains("content") && !msg["content"].is_null())
+						{
+							// content may be either a string or an object; handle both
+							if (msg["content"].is_string())
+								assistant_content = msg["content"].get<std::string>();
+							else
+								assistant_content = msg["content"].dump();
+						} else
+						{
+							assistant_content = "";
+						}
+
+						// Check for tool calls in Ollama response format
+						bool hasToolCalls = msg.contains("tool_calls") &&
+											msg["tool_calls"].is_array() &&
+											!msg["tool_calls"].empty();
+
+						// Update existing streaming message instead of creating new one
+						{
+							std::lock_guard<std::mutex> lock(gAIAgent.messagesMutex);
+							if (!gAIAgent.messages.empty() &&
+								gAIAgent.messages.back().isStreaming &&
+								gAIAgent.messages.back().role == "assistant")
+							{
+								// Update existing streaming message
+								gAIAgent.messages.back().isStreaming = false;
+								// Add tool calls if present
+								if (hasToolCalls)
+								{
+									gAIAgent.messages.back().tool_calls =
+										msg["tool_calls"];
+									std::cout << "Added tool calls to existing streaming "
+												 "message"
+											  << std::endl;
+								}
+								// Don't overwrite text as it was built during streaming
+								gAIAgent.messageDisplayLinesDirty = true;
+								std::cout << "Updated existing streaming message"
+										  << std::endl;
+							} else
+							{
+								// Fallback: create new message if no streaming message found
+								Message assistantMsg;
+								assistantMsg.text = assistant_content;
+								assistantMsg.role = "assistant";
+								assistantMsg.isStreaming = false;
+								assistantMsg.hide_message = false;
+								assistantMsg.timestamp = std::chrono::system_clock::now();
+								if (hasToolCalls)
+								{
+									assistantMsg.tool_calls = msg["tool_calls"];
+								}
+								gAIAgent.messages.push_back(assistantMsg);
+								gAIAgent.messageDisplayLinesDirty = true;
+								std::cout << "Created new assistant message (no "
+											 "streaming message found)"
+										  << std::endl;
+							}
+						}
+
+						// Process tool calls if present
+						if (hasToolCalls)
+						{
+							std::cout << "=== PROCESSING OLLAMA TOOL CALLS ==="
+									  << std::endl;
+							const auto &toolCalls = msg["tool_calls"];
+							for (const auto &toolCall : toolCalls)
+							{
+								// Log the tool call for debugging
+								std::cout
+									<< "Raw Ollama tool call JSON: " << toolCall.dump()
+									<< std::endl;
+
+								if (toolCall.contains("function") &&
+									toolCall["function"].contains("name") &&
+									!toolCall["function"]["name"].is_null())
+								{
+									std::string toolName =
+										toolCall["function"]["name"].get<std::string>();
+									std::string argumentsStr;
+
+									if (!toolCall["function"].contains("arguments") ||
+										toolCall["function"]["arguments"].is_null())
+									{
+										argumentsStr = "{}";
+									} else
+									{
+										argumentsStr = toolCall["function"]["arguments"]
+														   .get<std::string>();
+									}
+
+									std::cout
+										<< "Executing Ollama tool call: " << toolName
+										<< std::endl;
+									std::cout << "Arguments: " << argumentsStr
+											  << std::endl;
+
+									std::string result;
+									bool toolCallSucceeded = false;
+
+									try
+									{
+										json argumentsJson = json::parse(argumentsStr);
+										std::unordered_map<std::string, std::string>
+											parameters;
+
+										for (auto it = argumentsJson.begin();
+											 it != argumentsJson.end();
+											 ++it)
+										{
+											if (it.value().is_null())
+											{
+												parameters[it.key()] = "";
+											} else
+											{
+												parameters[it.key()] =
+													it.value().get<std::string>();
+											}
+										}
+
+										// Execute the tool call
+										result = gMCPManager.executeToolCall(toolName,
+																			 parameters);
+										toolCallSucceeded = true;
+
+										std::cout << "=== OLLAMA TOOL CALL RESULT ==="
+												  << std::endl;
+										std::cout << result << std::endl;
+										std::cout << "=== END OLLAMA TOOL CALL RESULT ==="
+												  << std::endl;
+
+									} catch (const json::parse_error &e)
+									{
+										std::cerr << "Error parsing Ollama tool call "
+													 "arguments: "
+												  << e.what() << std::endl;
+										result = "ERROR: Failed to parse tool call "
+												 "arguments: " +
+												 std::string(e.what());
+										toolCallSucceeded = false;
+									} catch (const std::exception &e)
+									{
+										std::cerr << "Error executing Ollama tool call: "
+												  << e.what() << std::endl;
+										result = "ERROR: Tool execution failed: " +
+												 std::string(e.what());
+										toolCallSucceeded = false;
+									}
+
+									// Add tool result message
+									{
+										std::lock_guard<std::mutex> lock(
+											gAIAgent.messagesMutex);
+										Message toolMsg;
+										toolMsg.text = result;
+										toolMsg.role = "tool";
+										toolMsg.isStreaming = false;
+										toolMsg.hide_message = false;
+										toolMsg.timestamp =
+											std::chrono::system_clock::now();
+
+										// Set the tool_call_id to match the tool call ID
+										if (toolCall.contains("id") &&
+											!toolCall["id"].is_null())
+										{
+											toolMsg.tool_call_id =
+												toolCall["id"].get<std::string>();
+										}
+
+										gAIAgent.messages.push_back(toolMsg);
+										gAIAgent.messageDisplayLinesDirty = true;
+
+										std::cout << "=== DEBUG: Added Ollama tool "
+													 "message to agent ==="
+												  << std::endl;
+										std::cout << "Tool message text: "
+												  << toolMsg.text.substr(0, 100) << "..."
+												  << std::endl;
+										std::cout
+											<< "Tool call ID: " << toolMsg.tool_call_id
+											<< std::endl;
+										std::cout << "Tool call succeeded: "
+												  << (toolCallSucceeded ? "YES" : "NO")
+												  << std::endl;
+										std::cout << "=== END DEBUG ===" << std::endl;
+									}
+								}
+							}
+							std::cout << "=== END PROCESSING OLLAMA TOOL CALLS ==="
+									  << std::endl;
+
+							// Set flag to trigger follow-up message after tool calls
+							gAIAgent.needsFollowUpMessage = true;
+
+							// Call the completion callback to indicate tool calls were
+							// processed
+							if (onComplete)
+							{
+								onComplete("", true); // Empty result, but had tool call
+							}
+							return;
+						}
+
+						if (onComplete)
+							onComplete(assistant_content, false);
+
+					} catch (const std::exception &e)
+					{
+						std::cerr << "Error handling Ollama response: " << e.what()
+								  << std::endl;
+						if (onComplete)
+							onComplete(std::string(
+										   "ERROR: Failed to parse Ollama response: ") +
+										   e.what(),
+									   false);
+					}
+
+					// We handled the Ollama response, skip the OpenRouter/choices branch
+					// below.
+				} else if (fullJsonResponse->contains("choices") &&
+						   (*fullJsonResponse)["choices"].is_array() &&
+						   !(*fullJsonResponse)["choices"].empty())
 				{
 
 					const auto &choices = (*fullJsonResponse)["choices"];

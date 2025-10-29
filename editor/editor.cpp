@@ -29,6 +29,7 @@
 #include "editor_utils.h"
 
 #include "../ai/ai_tab.h"
+#include "../ai/python_completion.h"
 #include "../files/file_finder.h"
 #include "../files/files.h"
 #include "../lsp/lsp_symbol_info.h"
@@ -46,6 +47,7 @@ void Editor::textEditor()
 {
 	// process auto complete before edtior input....
 	gAITab.update();
+	gPythonCompletion.update();
 
 	setupEditorDisplay();
 

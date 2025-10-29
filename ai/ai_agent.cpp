@@ -2,6 +2,7 @@
 #include "../files/files.h" // for gFileExplorer
 #include "../lib/json.hpp"
 #include "agent_request.h"
+#include "ai_ollama.h"	   // for Ollama::getAvailableModels
 #include "editor/editor.h" // for editor_state
 #include "mcp/mcp_manager.h"
 #include "textselect.hpp"
@@ -160,8 +161,8 @@ void AIAgent::render(float agentPaneWidth, ImFont *largeFont)
 	renderMessageHistory(historySize, largeFont);
 	ImGui::Spacing();
 
-	// Render OpenRouter key input if there are API key errors
-	renderOpenRouterKeyInput(textBoxWidth, horizontalPadding);
+	// Render Ollama connection status if there are connection errors
+	renderOllamaConnectionStatus(textBoxWidth, horizontalPadding);
 
 	float lineHeight = ImGui::GetTextLineHeightWithSpacing();
 	float fontSize = ImGui::GetFontSize();
@@ -452,85 +453,59 @@ void AIAgent::renderMessageHistory(const ImVec2 &size, ImFont *largeFont)
 		static std::vector<std::string> dropdownItems;
 		static std::vector<std::string> displayItems; // For display purposes
 		static bool dropdownInitialized = false;
+		static auto lastModelFetch = std::chrono::steady_clock::now();
+		static const auto MODEL_CACHE_DURATION =
+			std::chrono::minutes(5); // Cache for 5 minutes
 
-		// Check if profile changed or first time initializing
+		// Check if profile changed, first time initializing, or cache expired
 		std::string newAgentModel = gSettings.getAgentModel();
+		auto now = std::chrono::steady_clock::now();
+		bool cacheExpired = (now - lastModelFetch) > MODEL_CACHE_DURATION;
 		if (!dropdownInitialized || gSettings.profileJustSwitched ||
-			currentAgentModel != newAgentModel)
+			currentAgentModel != newAgentModel || cacheExpired)
 		{
 			currentAgentModel = newAgentModel;
 			dropdownItems.clear();
 			displayItems.clear();
 
-			// Add current agent model as first option
-			dropdownItems.push_back(currentAgentModel);
+			// Fetch available models from Ollama
+			std::vector<std::string> availableModels = Ollama::getAvailableModels();
 
-			// Create display version for current model (show left part before slash)
-			std::string displayModel = currentAgentModel;
-			size_t slashPos = currentAgentModel.find('/');
-			if (slashPos != std::string::npos)
+			// Add current agent model as first option if not in the list
+			bool currentModelFound = false;
+			for (const auto &model : availableModels)
 			{
-				displayModel =
-					currentAgentModel.substr(slashPos + 1,
-											 currentAgentModel.length() - slashPos -
-												 1); // Show part after slash
-			} else
-			{
-				displayModel = currentAgentModel;
+				if (model == currentAgentModel)
+				{
+					currentModelFound = true;
+					break;
+				}
 			}
-			displayItems.push_back(displayModel);
 
-			// Add models grouped by provider
-			// Claude models
-			dropdownItems.push_back("anthropic/claude-sonnet-4");
-			dropdownItems.push_back("anthropic/claude-3-5-haiku-20241022");
-			dropdownItems.push_back("anthropic/claude-3.7-sonnet");
-			// Google models
-			dropdownItems.push_back("google/gemini-2.5-flash");
-			dropdownItems.push_back("google/gemini-2.5-pro");
-			// OpenAI models
-			//			dropdownItems.push_back("openai/gpt-5");
-			dropdownItems.push_back("openai/gpt-5-mini");
-			dropdownItems.push_back("openai/gpt-5-nano");
-			// xAI models
-			dropdownItems.push_back("x-ai/grok-3");
-			dropdownItems.push_back("x-ai/grok-4");
-			// DeepSeek & Qwen models
-			dropdownItems.push_back("deepseek/deepseek-chat-v3-0324");
-			dropdownItems.push_back("qwen/qwen3-coder");
-			// Other models
-			dropdownItems.push_back("meta-llama/llama-3.3-70b-instruct");
+			if (!currentModelFound && !currentAgentModel.empty())
+			{
+				dropdownItems.push_back(currentAgentModel);
+				displayItems.push_back(currentAgentModel);
+			}
 
-			// Create display versions for placeholders (show right part after slash)
-			displayItems.push_back("claude-sonnet-4");
-			displayItems.push_back("claude-3.5-haiku");
-			displayItems.push_back("claude-3.7-sonnet");
-
-			displayItems.push_back("gemini-2.5-flash");
-			displayItems.push_back("gemini-2.5-pro");
-
-			// displayItems.push_back("gpt-5");
-			displayItems.push_back("gpt-5-mini");
-			displayItems.push_back("gpt-5-nano");
-
-			displayItems.push_back("grok-3");
-			displayItems.push_back("grok-4");
-
-			displayItems.push_back("deepseek-chat-v3-0324");
-			displayItems.push_back("qwen3-coder");
-
-			displayItems.push_back("llama-3.3-70b-instruct");
+			// Add all available models from Ollama
+			for (const auto &model : availableModels)
+			{
+				dropdownItems.push_back(model);
+				displayItems.push_back(model);
+			}
 
 			// Reset selection to first item (current model)
 			selectedItem = 0;
 			dropdownInitialized = true;
+			lastModelFetch = now; // Update cache timestamp
 
 			// Debug: Print all available models
-			std::cout << "=== AVAILABLE MODELS ===" << std::endl;
+			std::cout << "=== OLLAMA AVAILABLE MODELS (" << availableModels.size()
+					  << " found) ===" << std::endl;
 			for (size_t i = 0; i < displayItems.size(); ++i)
 			{
-				std::cout << i << ": " << displayItems[i] << " (" << dropdownItems[i]
-						  << ")" << std::endl;
+				std::cout << i << ": " << displayItems[i] << std::endl;
 			}
 			std::cout << "=== END MODELS ===" << std::endl;
 		}
@@ -618,9 +593,14 @@ void AIAgent::renderMessageHistory(const ImVec2 &size, ImFont *largeFont)
 									 windowSize.x * 0.8f); // Maximum 80% of window width
 
 			ImVec2 dropdownSize(dropdownWidth, 0.0f);
-			ImVec2 dropdownPos = ImVec2((windowSize.x - dropdownSize.x) * 0.5f,
+			// Position dropdown and refresh button
+			float buttonWidth = 30.0f;
+			float spacing = 8.0f;
+			float totalWidth = dropdownSize.x + buttonWidth + spacing;
+			ImVec2 dropdownPos = ImVec2((windowSize.x - totalWidth) * 0.5f,
 										centerPos.y + textSize.y + 20.0f);
 			ImGui::SetCursorPos(dropdownPos);
+
 			std::vector<const char *> items;
 			for (const auto &item : displayItems)
 				items.push_back(item.c_str());
@@ -630,13 +610,21 @@ void AIAgent::renderMessageHistory(const ImVec2 &size, ImFont *largeFont)
 			{
 				if (selectedItem >= 0 && selectedItem < (int)dropdownItems.size())
 				{
-					std::string newModel =
-						dropdownItems[selectedItem]; // Use full path from
-													 // dropdownItems
+					std::string newModel = dropdownItems[selectedItem];
 					gSettings.getSettings()["agent_model"] = newModel;
 					gSettings.saveSettings();
 					std::cout << "Agent model changed to: " << newModel << std::endl;
 				}
+			}
+
+			// Add refresh button next to dropdown
+			ImGui::SameLine();
+			ImGui::SetCursorPosX(dropdownPos.x + dropdownSize.x + spacing);
+			if (ImGui::Button("🔄", ImVec2(buttonWidth, 0)))
+			{
+				// Force refresh by setting cache as expired
+				lastModelFetch = std::chrono::steady_clock::time_point::min();
+				std::cout << "Refreshing Ollama model list..." << std::endl;
 			}
 			ImGui::SetWindowFontScale(1.0f);
 			if (currentFont)
@@ -678,24 +666,9 @@ void AIAgent::sendMessage(const char *msg, bool hide_message)
 	userScrolledUp = false;
 	scrollToBottom = true;
 	forceScrollToBottomNextFrame = true;
-	std::string api_key = gSettingsFileManager.getOpenRouterKey();
-	if (api_key.empty())
-	{
-		std::lock_guard<std::mutex> lock(messagesMutex);
-		Message errorMsg;
-		errorMsg.text = "Error: No OpenRouter API key configured. Please set "
-						"your API key in Settings.";
-		errorMsg.role = "assistant";
-		errorMsg.isStreaming = false;
-		errorMsg.hide_message = false;
-		errorMsg.timestamp = std::chrono::system_clock::now();
-		messages.push_back(errorMsg);
-		hasApiKeyError = true;
-		std::cout << "hasApiKeyError: " << hasApiKeyError << std::endl;
-		messageDisplayLinesDirty = true;
-		scrollToBottom = true;
-		return;
-	}
+	// Ollama runs locally and doesn't require API keys
+	std::string api_key = "local-ollama";
+	hasApiKeyError = false; // Reset any previous errors
 	stopStreaming();
 	if (agentRequest.isProcessing())
 	{
@@ -725,19 +698,28 @@ void AIAgent::sendMessage(const char *msg, bool hide_message)
 		messageDisplayLinesDirty = true;
 	}
 	scrollToBottom = true;
+
+	// Create Ollama-compatible payload with tools support
 	json payload;
 	payload["model"] = gSettings.getAgentModel();
-	payload["temperature"] = 0.7;
-	payload["max_tokens"] = 2000;
+	payload["stream"] = true;
+
+	// Add options for better responses
+	json options;
+	options["temperature"] = 0.7;
+	options["num_predict"] = 2000;
+	payload["options"] = options;
+
 	json messagesJson = json::array();
 	json systemMessage;
 	systemMessage["role"] = "system";
 
-	// Build system prompt with current context
+	// Build system prompt with current context and tools
 	std::string systemPrompt =
 		"You are a helpful AI assistant with access to file system and "
 		"terminal tools. Use these "
-		"tools when they would help accomplish the user's request.\n\n";
+		"tools when they would help accomplish the user's request. "
+		"Be concise and helpful.\n\n";
 
 	// Add current project directory if available
 	if (!gFileExplorer.selectedFolder.empty())
@@ -756,6 +738,8 @@ void AIAgent::sendMessage(const char *msg, bool hide_message)
 
 	systemMessage["content"] = systemPrompt;
 	messagesJson.push_back(systemMessage);
+
+	// Add conversation messages with tool support
 	{
 		std::lock_guard<std::mutex> lock(messagesMutex);
 		for (const auto &msg : messages)
@@ -764,6 +748,7 @@ void AIAgent::sendMessage(const char *msg, bool hide_message)
 			{
 				json messageObj;
 				messageObj["role"] = msg.role;
+
 				if (msg.role == "tool")
 				{
 					messageObj["content"] = msg.text;
@@ -771,65 +756,75 @@ void AIAgent::sendMessage(const char *msg, bool hide_message)
 					{
 						messageObj["tool_call_id"] = msg.tool_call_id;
 					}
-				} else if (!msg.tool_calls.is_null())
+				} else if (!msg.tool_calls.is_null() && msg.tool_calls.is_array() &&
+						   !msg.tool_calls.empty())
 				{
-					if (msg.text.empty())
-					{
-						messageObj["content"] = "";
-					} else
-					{
-						messageObj["content"] = msg.text;
-					}
+					// Assistant message with tool calls
+					messageObj["content"] = msg.text.empty() ? "" : msg.text;
 					messageObj["tool_calls"] = msg.tool_calls;
 				} else
 				{
-					// For regular messages without tool calls, handle empty
-					// content properly
-					if (msg.text.empty())
-					{
-						messageObj["content"] = "";
-					} else
-					{
-						messageObj["content"] = msg.text;
-					}
+					// Regular user/assistant message
+					messageObj["content"] = msg.text.empty() ? "" : msg.text;
 				}
+
 				messagesJson.push_back(messageObj);
 			}
 		}
 	}
 	payload["messages"] = messagesJson;
-	json toolsJson = json::array();
-	std::vector<MCP::ToolDefinition> tools = gMCPManager.getToolDefinitions();
-	for (const auto &tool : tools)
+
+	// Check if the model supports tools (only add tools for compatible models)
+	std::string currentModel = gSettings.getAgentModel();
+	bool modelSupportsTools = (currentModel.find("llama") != std::string::npos ||
+							   currentModel.find("mistral") != std::string::npos ||
+							   currentModel.find("qwen") != std::string::npos);
+
+	if (modelSupportsTools)
 	{
-		json toolObj;
-		toolObj["type"] = "function";
-		json functionObj;
-		functionObj["name"] = tool.name;
-		functionObj["description"] = tool.description;
-		json properties = json::object();
-		json required = json::array();
-		for (const auto &param : tool.parameters)
+		// Add tools to the payload
+		json toolsJson = json::array();
+		std::vector<MCP::ToolDefinition> tools = gMCPManager.getToolDefinitions();
+		std::cout << "Adding " << tools.size()
+				  << " tools to main payload (model supports tools)" << std::endl;
+		for (const auto &tool : tools)
 		{
-			json paramObj;
-			paramObj["type"] = param.type;
-			paramObj["description"] = param.description;
-			properties[param.name] = paramObj;
-			if (param.required)
+			json toolObj;
+			toolObj["type"] = "function";
+			json functionObj;
+			functionObj["name"] = tool.name;
+			functionObj["description"] = tool.description;
+			json properties = json::object();
+			json required = json::array();
+			for (const auto &param : tool.parameters)
 			{
-				required.push_back(param.name);
+				json paramObj;
+				paramObj["type"] = param.type;
+				paramObj["description"] = param.description;
+				properties[param.name] = paramObj;
+				if (param.required)
+				{
+					required.push_back(param.name);
+				}
 			}
+			json parametersObj;
+			parametersObj["type"] = "object";
+			parametersObj["properties"] = properties;
+			parametersObj["required"] = required;
+			functionObj["parameters"] = parametersObj;
+			toolObj["function"] = functionObj;
+			toolsJson.push_back(toolObj);
 		}
-		json parametersObj;
-		parametersObj["type"] = "object";
-		parametersObj["properties"] = properties;
-		parametersObj["required"] = required;
-		functionObj["parameters"] = parametersObj;
-		toolObj["function"] = functionObj;
-		toolsJson.push_back(toolObj);
+		if (!toolsJson.empty())
+		{
+			payload["tools"] = toolsJson;
+			payload["tool_choice"] = "auto";
+		}
+	} else
+	{
+		std::cout << "Model " << currentModel
+				  << " doesn't support tools, using basic chat" << std::endl;
 	}
-	payload["tools"] = toolsJson;
-	payload["tool_choice"] = "auto";
 	// std::cout << "DEBUG: Sending modern API payload:" << std::endl;
 	// std::cout << payload.dump(2) << std::endl;
 	std::string payloadStr = payload.dump();
@@ -1479,149 +1474,27 @@ void AIAgent::triggerAIResponse()
 	std::cout << "=== TRIGGER AI RESPONSE: FINISHED ===" << std::endl;
 }
 
-void AIAgent::renderOpenRouterKeyInput(float textBoxWidth, float horizontalPadding)
+void AIAgent::renderOllamaConnectionStatus(float textBoxWidth, float horizontalPadding)
 {
-	// Only render if we have API key errors
+	// Only render if we have connection errors
 	if (!hasApiKeyError)
 	{
 		return;
 	}
 
-	// Static variables for the input
-	static char openRouterKeyBuffer[128] = "";
-	static bool showOpenRouterKey = false;
-	static bool initialized = false;
-	static bool keyChanged = false;
-
-	// Initialize the buffer
-	if (!initialized)
-	{
-		openRouterKeyBuffer[0] = '\0';
-		initialized = true;
-	}
-
-	// Render the key input section
+	// Render the connection status section
 	ImGui::Spacing();
 	ImGui::Separator();
 	ImGui::Spacing();
 
 	ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.5f, 0.0f, 1.0f));
-	ImGui::TextWrapped("⚠️ OpenRouter Key");
+	ImGui::TextWrapped("⚠️ Ollama Connection");
 	ImGui::PopStyleColor();
 	ImGui::Spacing();
 
-	// Buttons above the input (styled like agent input buttons)
-	ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 4.0f);
-	ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.0f);
-	ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(8, 8));
-	ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
-
-	// Safe access to backgroundColor with null checks
-	auto &bgColor = gSettings.getSettings()["backgroundColor"];
-	float bgR = (bgColor.is_array() && bgColor.size() > 0 && !bgColor[0].is_null())
-					? bgColor[0].get<float>()
-					: 0.1f;
-	float bgG = (bgColor.is_array() && bgColor.size() > 1 && !bgColor[1].is_null())
-					? bgColor[1].get<float>()
-					: 0.1f;
-	float bgB = (bgColor.is_array() && bgColor.size() > 2 && !bgColor[2].is_null())
-					? bgColor[2].get<float>()
-					: 0.1f;
-
-	ImGui::PushStyleColor(ImGuiCol_Button,
-						  ImVec4(bgR * 0.8f, bgG * 0.8f, bgB * 0.8f, 1.0f));
-	ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
-						  ImVec4(bgR * 0.95f, bgG * 0.95f, bgB * 0.95f, 1.0f));
-	ImGui::PushStyleColor(ImGuiCol_ButtonActive,
-						  ImVec4(bgR * 0.7f, bgG * 0.7f, bgB * 0.7f, 1.0f));
-
-	// Save button
-	ImVec2 saveTextSize = ImGui::CalcTextSize("Save");
-	ImVec2 saveButtonSize = ImVec2(saveTextSize.x + 16.0f, 0);
-	if (ImGui::Button("Save##agent_key", saveButtonSize) && keyChanged)
-	{
-		gSettingsFileManager.setOpenRouterKey(std::string(openRouterKeyBuffer));
-		gAITab.load_key();
-		gSettings.renderNotification("OpenRouter key saved!", 2.0f);
-		keyChanged = false;
-
-		// Clear the buffer after saving
-		openRouterKeyBuffer[0] = '\0';
-
-		// Clear the API key error flag so the input disappears
-		hasApiKeyError = false;
-
-		// Mark display as dirty to refresh the error message display
-		messageDisplayLinesDirty = true;
-	}
-	ImGui::SameLine();
-
-	// Show/Hide button
-	ImVec2 showTextSize = ImGui::CalcTextSize(showOpenRouterKey ? "Hide" : "Show");
-	ImVec2 showButtonSize = ImVec2(showTextSize.x + 16.0f, 0);
-	if (ImGui::Button(showOpenRouterKey ? "Hide" : "Show", showButtonSize))
-	{
-		showOpenRouterKey = !showOpenRouterKey;
-	}
-
-	ImGui::PopStyleColor(4);
-	ImGui::PopStyleVar(3);
-
+	ImGui::TextWrapped("Could not connect to Ollama. Please ensure:");
+	ImGui::BulletText("Ollama is installed and running");
+	ImGui::BulletText("Run 'ollama serve' in terminal");
+	ImGui::BulletText("DeepSeek model is available: 'ollama pull deepseek-coder:latest'");
 	ImGui::Spacing();
-
-	// OpenRouter Key Input - styled like agent input below
-	ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 4.0f);
-	ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.0f);
-	ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(8, 8));
-	ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
-
-	// Safe access to backgroundColor with null checks
-	auto &bgColor2 = gSettings.getSettings()["backgroundColor"];
-	float bgR2 = (bgColor2.is_array() && bgColor2.size() > 0 && !bgColor2[0].is_null())
-					 ? bgColor2[0].get<float>()
-					 : 0.1f;
-	float bgG2 = (bgColor2.is_array() && bgColor2.size() > 1 && !bgColor2[1].is_null())
-					 ? bgColor2[1].get<float>()
-					 : 0.1f;
-	float bgB2 = (bgColor2.is_array() && bgColor2.size() > 2 && !bgColor2[2].is_null())
-					 ? bgColor2[1].get<float>()
-					 : 0.1f;
-
-	ImGui::PushStyleColor(ImGuiCol_FrameBg,
-						  ImVec4(bgR2 * 0.8f, bgG2 * 0.8f, bgB2 * 0.8f, 1.0f));
-
-	// Set width to match agent input (responsive to pane size)
-	ImGui::SetNextItemWidth(textBoxWidth - 2 * horizontalPadding);
-
-	ImGuiInputTextFlags flags = showOpenRouterKey ? 0 : ImGuiInputTextFlags_Password;
-	bool inputChanged = ImGui::InputTextWithHint("##openrouterkey_agent",
-												 "API key",
-												 openRouterKeyBuffer,
-												 sizeof(openRouterKeyBuffer),
-												 flags);
-
-	ImGui::PopStyleColor(2);
-	ImGui::PopStyleVar(3);
-
-	// Check focus state immediately after the input widget
-	bool isInputActive = ImGui::IsItemActive();
-
-	if (inputChanged)
-	{
-		keyChanged = true;
-	}
-
-	ImGui::Spacing();
-
-	// Handle input blocking logic for the key input
-	static bool wasInputActive = false;
-	if (isInputActive != wasInputActive)
-	{
-		editor_state.block_input = isInputActive;
-		wasInputActive = isInputActive;
-	}
-	if (isInputActive)
-	{
-		editor_state.block_input = true;
-	}
 }

@@ -9,7 +9,7 @@ using json = nlohmann::json;
 
 extern std::atomic<bool> g_should_cancel;
 
-class OpenRouter
+class Ollama
 {
   public:
 	static std::string request(const std::string &prompt, const std::string &api_key);
@@ -46,6 +46,9 @@ class OpenRouter
 	static size_t WriteDataStream(void *ptr, size_t size, size_t nmemb, std::string *data);
 	static size_t
 	WriteDataStreamWithResponse(void *ptr, size_t size, size_t nmemb, std::string *data);
+
+	// Model management
+	static std::vector<std::string> getAvailableModels();
 
   private:
 	static std::string sanitize_completion(const std::string &completion);

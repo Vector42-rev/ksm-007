@@ -1,5 +1,6 @@
 #include "editor_keyboard.h"
 #include "../ai/ai_tab.h"
+#include "../ai/python_completion.h"
 #include "../editor/editor_git.h"
 #include "../files/file_finder.h"
 #include "../files/files.h"
@@ -1071,6 +1072,30 @@ void EditorKeyboard::handleEditorKeyboardInput()
 			gAITab.dismiss_completion();
 		}
 	}
+
+	// Handle Python completion
+	if (gPythonCompletion.has_ghost_text)
+	{
+		if (ImGui::IsKeyPressed(ImGuiKey_Tab))
+		{
+			gPythonCompletion.accept_completion();
+			return;
+		}
+		// Dismiss completion on any character input or arrow key
+		if (ImGui::GetIO().InputQueueCharacters.Size > 0 ||
+			ImGui::IsKeyPressed(ImGuiKey_LeftArrow) ||
+			ImGui::IsKeyPressed(ImGuiKey_RightArrow) ||
+			ImGui::IsKeyPressed(ImGuiKey_UpArrow) ||
+			ImGui::IsKeyPressed(ImGuiKey_DownArrow) ||
+			ImGui::IsKeyPressed(ImGuiKey_Delete) ||
+			ImGui::IsKeyPressed(ImGuiKey_Backspace) ||
+			ImGui::IsKeyPressed(ImGuiKey_Enter) || ImGui::IsKeyPressed(ImGuiKey_Escape) ||
+			(ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_X)))
+		{
+			gPythonCompletion.dismiss_completion();
+		}
+	}
+
 	// Cancel any ongoing requests when arrow keys are pressed
 	if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow) ||
 		ImGui::IsKeyPressed(ImGuiKey_RightArrow) ||
@@ -1080,6 +1105,7 @@ void EditorKeyboard::handleEditorKeyboardInput()
 		ImGui::IsKeyPressed(ImGuiKey_Escape))
 	{
 		gAITab.cancel_request();
+		gPythonCompletion.cancel_request();
 	}
 
 	// Process bookmarks first
@@ -1142,10 +1168,16 @@ void EditorKeyboard::handleEditorKeyboardInput()
 			*/
 
 			ImGuiKey ai_completions = gKeybinds.getActionKey("ai_completion");
+			ImGuiKey python_completions = gKeybinds.getActionKey("python_completion");
 
 			if (ImGui::IsKeyPressed(ai_completions, false))
 			{
 				gAITab.tab_complete();
+			}
+
+			if (ImGui::IsKeyPressed(python_completions, false))
+			{
+				gPythonCompletion.python_complete();
 			}
 			processFontSizeAdjustment();
 			processSelectAll();

@@ -1,5 +1,5 @@
 #include "mcp_file_system.h"
-#include "../ai_open_router.h"
+#include "../ai_ollama.h"
 #include "../lib/json.hpp"
 #include "../util/settings.h"
 #include "../util/settings_file_manager.h"
@@ -312,7 +312,7 @@ std::string FileSystemServer::editFile(const std::string &target_file,
 		}
 
 		// Initialize CURL if not already done
-		if (!OpenRouter::initializeCURL())
+		if (!Ollama::initializeCURL())
 		{
 			return "ERROR: Failed to initialize CURL for HTTP requests.";
 		}
@@ -351,7 +351,7 @@ std::string FileSystemServer::editFile(const std::string &target_file,
 						 "https://openrouter.ai/api/v1/chat/completions");
 		curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
 		curl_easy_setopt(curl, CURLOPT_POSTFIELDS, json_str.c_str());
-		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, OpenRouter::WriteData);
+		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, Ollama::WriteData);
 		curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
 		curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L);
 		curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 10L);

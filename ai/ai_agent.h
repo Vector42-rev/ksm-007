@@ -5,7 +5,7 @@
 #include "ai_agent_history.h"
 #include "ai_agent_text_input.h"
 #include "ai_message.h"
-#include "ai_open_router.h"
+#include "ai_ollama.h"
 #include "textselect.hpp"
 #include <atomic>
 #include <chrono>
@@ -69,8 +69,8 @@ class AIAgent
 	// Helper method to trigger AI response after tool calls
 	void triggerAIResponse();
 
-	// Helper method to render OpenRouter key input when API key errors occur
-	void renderOpenRouterKeyInput(float textBoxWidth, float horizontalPadding);
+	// Helper method to render Ollama connection status when errors occur
+	void renderOllamaConnectionStatus(float textBoxWidth, float horizontalPadding);
 
 	// History management
 	AIAgentHistory historyManager;

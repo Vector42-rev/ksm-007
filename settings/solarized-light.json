@@ -1,5 +1,5 @@
 {
-    "agent_model": "anthropic/claude-3-5-haiku-20241022",
+    "agent_model": "google/gemini-2.5-pro",
     "agent_pane_visible": true,
     "agent_split_pos": 0.21298927068710327,
     "ai_autocomplete": true,

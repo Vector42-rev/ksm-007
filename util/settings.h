@@ -167,6 +167,21 @@ class Settings
 		return "meta-llama/llama-4-scout"; // Fallback
 	}
 
+	long getAgentTimeout() const
+	{
+		if (settings.contains("agent_timeout") && settings["agent_timeout"].is_number())
+		{
+			return settings["agent_timeout"].get<long>();
+		}
+		return 120L; // Default 2 minute timeout
+	}
+
+	void setAgentTimeout(long timeout)
+	{
+		settings["agent_timeout"] = timeout;
+		settingsChanged = true;
+	}
+
 	std::vector<std::string> fontNames = {
 		"SourceCodePro-Regular",
 		"JetBrainsMonoNL-Regular",
