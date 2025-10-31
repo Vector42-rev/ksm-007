@@ -5,6 +5,8 @@ Added random features like replacing the openrouter api with a offline ollama ap
 <video src="https://github.com/user-attachments/assets/0473e7dc-53fd-4f84-a077-727490e3c9e0" width="640" controls></video>
 
 
-
-
+--> put some backend code which will rewrite loops selected using libcst
+--> ctrl+a --> ctrl+y --> tests if loops are embarissingly parallel or not
+--> ctrl_a --> ctrl + h --> gives parallelised code as ghost text --> press tab
+ 
 
