@@ -551,6 +551,16 @@ bool KeybindsManager::handleKeyboardShortcuts()
 		shortcutPressed = true;
 	}
 
+	ImGuiKey togglePythonOutput = getActionKey("toggle_python_output");
+	if (modPressed && ImGui::IsKeyPressed(togglePythonOutput, false))
+	{
+		// Toggle Python output pane visibility
+		Splitter::showPythonOutputPane = !Splitter::showPythonOutputPane;
+
+		std::cout << "Toggled Python output pane visibility" << std::endl;
+		shortcutPressed = true;
+	}
+
 	ImGuiKey toggleTerminal = getActionKey("toggle_terminal");
 
 	if (modPressed && ImGui::IsKeyPressed(toggleTerminal, false))

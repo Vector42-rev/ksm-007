@@ -10,6 +10,7 @@ Description: Render and frame management class implementation for NED text edito
 #include "imgui_internal.h"
 
 #include "ai/ai_agent.h"
+#include "ai/python_output_pane.h"
 #include "editor/editor.h"
 #include "editor/editor_bookmarks.h"
 #include "editor/editor_scroll.h"
@@ -441,11 +442,9 @@ void Render::renderMainWindow(GLFWwindow *window,
 
 	float windowWidth = ImGui::GetWindowWidth();
 	float padding = ImGui::GetStyle().WindowPadding.x;
+	bool showRightPane = Splitter::showAgentPane || Splitter::showPythonOutputPane;
 	float availableWidth =
-		windowWidth - padding * 3 -
-		(Splitter::showAgentPane ? kAgentSplitterWidth
-								 : 0.0f); // Only account for splitter width
-										  // when agent pane is visible
+		windowWidth - padding * 3 - (showRightPane ? kAgentSplitterWidth : 0.0f);
 
 	if (Splitter::showSidebar)
 	{
@@ -454,10 +453,10 @@ void Render::renderMainWindow(GLFWwindow *window,
 		float rightSplit = gSettings.getAgentSplitPos();
 
 		float explorerWidth = availableWidth * leftSplit;
-		float agentPaneWidth = availableWidth * rightSplit;
+		float rightPaneWidth = availableWidth * rightSplit;
 		float editorWidth = availableWidth - explorerWidth -
-							(Splitter::showAgentPane ? agentPaneWidth : 0.0f) -
-							(padding * 2) + 16.0f;
+							(showRightPane ? rightPaneWidth : 0.0f) - (padding * 2) +
+							16.0f;
 
 		// Render File Explorer
 		gFileExplorer.renderFileExplorer(explorerWidth);
@@ -469,42 +468,53 @@ void Render::renderMainWindow(GLFWwindow *window,
 
 		// Render Editor
 		gEditor.renderEditor(gFont.currentFont, editorWidth);
-		if (Splitter::showAgentPane)
+		if (showRightPane)
 		{
 			ImGui::SameLine(0, 0);
-			// Render right splitter (new)
+			// Render right splitter
 			splitter.renderAgentSplitter(padding, availableWidth, Splitter::showSidebar);
 			ImGui::SameLine(0, 0);
-			// Render Agent Pane (new)
-			gAIAgent.render(agentPaneWidth, gFont.largeFont);
+			// Render either Agent Pane or Python Output Pane
+			if (Splitter::showPythonOutputPane)
+			{
+				gPythonOutputPane.render(rightPaneWidth, gFont.largeFont);
+			} else if (Splitter::showAgentPane)
+			{
+				gAIAgent.render(rightPaneWidth, gFont.largeFont);
+			}
 		}
 	} else
 	{
-		// No sidebar: just editor and agent pane
+		// No sidebar: just editor and right pane
 		float agentSplit = gSettings.getAgentSplitPos();
 
-		// Ensure agent pane has minimum width of 300px
-		float minAgentWidth = 300.0f;
-		float maxEditorWidth = availableWidth - minAgentWidth - kAgentSplitterWidth;
+		// Ensure right pane has minimum width of 300px
+		float minRightPaneWidth = 300.0f;
+		float maxEditorWidth = availableWidth - minRightPaneWidth - kAgentSplitterWidth;
 
 		float editorWidth =
-			Splitter::showAgentPane
-				? std::min(availableWidth * agentSplit, maxEditorWidth)
-				: availableWidth + 5.0f; // Add extra width when agent pane is hidden
+			showRightPane ? std::min(availableWidth * agentSplit, maxEditorWidth)
+						  : availableWidth + 5.0f; // Add extra width when pane is hidden
 
-		float agentPaneWidth =
-			Splitter::showAgentPane
-				? std::max(availableWidth - editorWidth - kAgentSplitterWidth,
-						   minAgentWidth)
-				: 0.0f;
+		float rightPaneWidth =
+			showRightPane ? std::max(availableWidth - editorWidth - kAgentSplitterWidth,
+									 minRightPaneWidth)
+						  : 0.0f;
 
 		gEditor.renderEditor(gFont.currentFont, editorWidth);
-		if (Splitter::showAgentPane)
+		if (showRightPane)
 		{
 			ImGui::SameLine(0, 0);
 			splitter.renderAgentSplitter(padding, availableWidth, Splitter::showSidebar);
 			ImGui::SameLine(0, 0);
-			gAIAgent.render(agentPaneWidth, gFont.largeFont);
+			// Render either Python Output Pane or Agent Pane
+			if (Splitter::showPythonOutputPane)
+			{
+				gPythonOutputPane.render(rightPaneWidth, gFont.largeFont);
+			} else if (Splitter::showAgentPane)
+			{
+				gAIAgent.render(rightPaneWidth, gFont.largeFont);
+			}
 		}
 	}
 	windowResize.resize();

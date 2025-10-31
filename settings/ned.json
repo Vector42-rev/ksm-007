@@ -1,7 +1,7 @@
 {
-    "agent_model": "deepseek-coder:6.7b",
-    "agent_pane_visible": true,
-    "agent_split_pos": 0.6401709318161011,
+    "agent_model": "qwen2.5:7b",
+    "agent_pane_visible": false,
+    "agent_split_pos": 0.5035008192062378,
     "agent_timeout": 0,
     "ai_autocomplete": true,
     "backgroundColor": [

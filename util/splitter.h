@@ -30,6 +30,7 @@ class Splitter
 	// Global variables (moved from UISettings)
 	static bool showSidebar;
 	static bool showAgentPane;
+	static bool showPythonOutputPane;
 	static float agentSplitPos;
 
   private:

@@ -10,6 +10,7 @@ Description: Implementation of the embeddable NED editor wrapper.
 
 #include "ai/ai_agent.h"
 #include "ai/ai_agent.h" // Ensure AI agent is included
+#include "ai/python_output_pane.h"
 #include "editor/editor.h"
 #include "editor/editor_bookmarks.h"
 #include "files/file_finder.h"
@@ -163,8 +164,9 @@ void NedEmbed::render()
 	ImGui::PushFont(gFont.currentFont);
 
 	float padding = ImGui::GetStyle().WindowPadding.x;
+	bool showRightPane = showAgentPane || Splitter::showPythonOutputPane;
 	float availableWidth =
-		width - padding * 3 - (showAgentPane ? kAgentSplitterWidth : 0.0f);
+		width - padding * 3 - (showRightPane ? kAgentSplitterWidth : 0.0f);
 
 	// Force agent pane to be hidden in embedded mode
 	Splitter::showAgentPane = false;

@@ -1169,6 +1169,7 @@ void EditorKeyboard::handleEditorKeyboardInput()
 
 			ImGuiKey ai_completions = gKeybinds.getActionKey("ai_completion");
 			ImGuiKey python_completions = gKeybinds.getActionKey("python_completion");
+			ImGuiKey python_output = gKeybinds.getActionKey("toggle_python_output");
 
 			if (ImGui::IsKeyPressed(ai_completions, false))
 			{
@@ -1178,6 +1179,11 @@ void EditorKeyboard::handleEditorKeyboardInput()
 			if (ImGui::IsKeyPressed(python_completions, false))
 			{
 				gPythonCompletion.python_complete();
+			}
+
+			if (ImGui::IsKeyPressed(python_output, false))
+			{
+				gPythonCompletion.python_output_to_pane();
 			}
 			processFontSizeAdjustment();
 			processSelectAll();

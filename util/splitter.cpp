@@ -14,6 +14,7 @@ extern Settings gSettings;
 // Global variables (moved from UISettings)
 bool Splitter::showSidebar = true;
 bool Splitter::showAgentPane = true;
+bool Splitter::showPythonOutputPane = false;
 float Splitter::agentSplitPos = 0.75f;
 
 Splitter::Splitter() {}

@@ -11,8 +11,9 @@ class PythonCompletion
   public:
 	PythonCompletion();
 	~PythonCompletion();
-	void python_complete(); // Trigger completion
-	void update();			// Call this in main loop
+	void python_complete();		  // Trigger completion
+	void python_output_to_pane(); // Send output to pane (Ctrl+Y)
+	void update();				  // Call this in main loop
 	void accept_completion();
 	void dismiss_completion();
 	void cancel_request();
@@ -36,6 +37,9 @@ class PythonCompletion
 	void insert(const std::string &code);
 	std::string get_selected_text() const;
 	std::string execute_python_script(const std::string &text);
+	std::string execute_rf3_script(const std::string &text);
+	std::string execute_script_helper(const std::string &text,
+									  const std::string &script_path);
 
 	std::mutex thread_mutex;
 	std::condition_variable thread_cv;

@@ -3,6 +3,7 @@
 #include "../editor/editor.h"
 #include "../files/files.h"
 #include "../lib/json.hpp"
+#include "python_output_pane.h"
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -38,6 +39,73 @@ PythonCompletion::~PythonCompletion()
 			worker_thread.detach();
 		}
 	}
+}
+
+void PythonCompletion::python_output_to_pane()
+{
+	// Cancel any active request first
+	if (request_active)
+	{
+		should_cancel = true;
+		request_active = false;
+		std::cout << "Python output request canceled\n";
+	}
+
+	pending_request = true;
+
+	cleanup_old_threads();
+
+	if (!can_start_new_thread())
+	{
+		return;
+	}
+
+	should_cancel = false;
+	increment_thread_count();
+
+	worker_thread = std::thread([this]() {
+		if (should_cancel)
+		{
+			request_active = false;
+			decrement_thread_count();
+			return;
+		}
+
+		request_active = true;
+
+		std::string selected_text = get_selected_text();
+		if (selected_text.empty() || should_cancel)
+		{
+			request_active = false;
+			decrement_thread_count();
+			return;
+		}
+
+		std::cout << "Requesting Python output for selected text ("
+				  << selected_text.length() << " chars)\n";
+		std::string new_response = execute_python_script(selected_text);
+
+		if (should_cancel)
+		{
+			request_active = false;
+			decrement_thread_count();
+			return;
+		}
+
+		// Send output to pane instead of ghost text
+		if (!new_response.empty() && new_response.find("error") != 0)
+		{
+			std::cerr << "✓ Got output for pane: " << new_response.length() << " chars\n";
+			gPythonOutputPane.setOutput(new_response);
+		} else if (!new_response.empty())
+		{
+			std::cerr << "Error from Python: " << new_response << "\n";
+			gPythonOutputPane.setOutput("Error: " + new_response);
+		}
+
+		request_active = false;
+		decrement_thread_count();
+	});
 }
 
 void PythonCompletion::python_complete()
@@ -82,7 +150,7 @@ void PythonCompletion::python_complete()
 
 		std::cout << "Requesting Python completion for selected text ("
 				  << selected_text.length() << " chars)\n";
-		std::string new_response = execute_python_script(selected_text);
+		std::string new_response = execute_rf3_script(selected_text);
 
 		if (should_cancel)
 		{
@@ -133,6 +201,17 @@ std::string PythonCompletion::get_selected_text() const
 
 std::string PythonCompletion::execute_python_script(const std::string &text)
 {
+	return execute_script_helper(text, "/home/veera/ned/python_backend.py");
+}
+
+std::string PythonCompletion::execute_rf3_script(const std::string &text)
+{
+	return execute_script_helper(text, "/home/veera/ned/rf3.py");
+}
+
+std::string PythonCompletion::execute_script_helper(const std::string &text,
+													const std::string &script_path)
+{
 	try
 	{
 		// Prepare JSON input
@@ -140,7 +219,8 @@ std::string PythonCompletion::execute_python_script(const std::string &text)
 		input_json["text"] = text;
 		std::string input_str = input_json.dump() + "\n";
 
-		std::cerr << "Sending to Python: " << input_str.substr(0, 100) << "...\n";
+		std::cerr << "Sending to " << script_path << ": " << input_str.substr(0, 100)
+				  << "...\n";
 
 		// Create a temporary file for the input
 		std::string temp_input = "/tmp/ned_python_input.json";
@@ -153,7 +233,7 @@ std::string PythonCompletion::execute_python_script(const std::string &text)
 		fclose(input_file);
 
 		// Execute Python script and read output
-		std::string command = "python3 /home/veera/ned/python_backend.py < " + temp_input;
+		std::string command = "python3 " + script_path + " < " + temp_input;
 		FILE *pipe = popen(command.c_str(), "r");
 		if (!pipe)
 		{
